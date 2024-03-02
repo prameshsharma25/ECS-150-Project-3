@@ -22,9 +22,11 @@ int main(int argc, char *argv[])
 	/* Mount disk */
 	diskname = argv[1];
 	ret = fs_mount(diskname);
-
+	printf("%i\n",ret);
+	ret = fs_info();
+	printf("%i\n",ret);
 	/* Close file and unmount */
-	fs_umount();
-
+	ret = fs_umount();
+	printf("%i\n",ret);
 	return 0;
 }

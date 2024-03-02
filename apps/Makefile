@@ -56,12 +56,12 @@ $(libfs): FORCE
 # Generic rule for linking final applications
 %.x: %.o $(libfs)
 	@echo "LD	$@"
-	$(Q)$(CC) -o $@ $< $(LDFLAGS)
+	$(Q)$(CC) -g -o $@ $< $(LDFLAGS) -lm
 
 # Generic rule for compiling objects
 %.o: %.c
 	@echo "CC	$@"
-	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
+	$(Q)$(CC) $(CFLAGS) -g -c -o $@ $<
 
 # Cleaning rule
 clean: FORCE

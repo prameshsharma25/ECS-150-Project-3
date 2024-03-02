@@ -12,6 +12,7 @@
 #include "fs.h"
 
 #define FAT_EOC 0xffff
+
 #pragma pack(push, 1)
 
 typedef struct
@@ -76,19 +77,22 @@ int fat_blocks_written(){
 	if (block_read(0, &superblock) == -1){
 		return -1;
 	}
-	uint16_t tempFatBlock[BLOCK_SIZE];
-	int fatBlocksWritten = 0;
-	for(int i = 1; i < superblock.root_directory_index; i++){
-		if (block_read(i, &tempFatBlock ) == -1){
-			perror("Error when reading fat block from disk\n");
-			return -1;
-		}
-		for(int j = 0; j < BLOCK_SIZE; j++){
-			if(tempFatBlock[j] != 0){
-				fatBlocksWritten++;
-			}
-		}
+	Root_Directory rdir[128];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
 	}
+	int fatBlocksWritten = 0;
+	for(int i = 0; i < 128; ++i){
+		if(rdir[i].filename[0] == 0){
+			continue;
+		}
+		double frac = (double)rdir[i].size/BLOCK_SIZE;
+		double ceiling = ceil(frac);
+		int c = round(ceiling);
+		fatBlocksWritten += c;
+	}
+	fatBlocksWritten++; // account for the EOF at the beginning manually
 	return fatBlocksWritten;
 }
 
@@ -112,6 +116,7 @@ int fs_mount(const char *diskname)
 	if (block_disk_open(diskname) == -1){
 		return -1;
 	}
+
 	Superblock superblock;
 	if (block_read(0, &superblock) == -1){
 		return -1;
@@ -133,8 +138,14 @@ int fs_mount(const char *diskname)
 		return -1;
 	}
 
-	memset(fdArray,-1,FS_OPEN_MAX_COUNT); // initialize fd array
-	memset(offsetArray,0,FS_OPEN_MAX_COUNT);
+	for(int i = 0; i < FS_OPEN_MAX_COUNT; ++i){
+		fdArray[i] = -1;
+	}
+
+	for(int i = 0; i < FS_OPEN_MAX_COUNT; ++i){
+		offsetArray[i] = 0;
+	}
+
 	return 0;
 }
 
@@ -146,6 +157,16 @@ int fs_umount(void)
 
 	if (block_disk_close() == -1){
 		return -1;
+	}
+
+	/*
+	* reset fd arrays
+	*/
+	for(int i = 0; i < FS_OPEN_MAX_COUNT; ++i){
+		fdArray[i] = -1;
+	}
+	for(int i = 0; i < FS_OPEN_MAX_COUNT; ++i){
+		offsetArray[i] = 0;
 	}
 
 	return 0;
@@ -161,9 +182,8 @@ int fs_info(void)
 	int filesWritten = files_written();
 	int fatBlocksWritten = fat_blocks_written();
 
-	printf("FS Info:\ntotal_blk_count=%i\nfat_blk_count=%i\nrdir_blk=%i\ndata_blk= \
-	%i\ndata_blk_count=%i\nfat_free_ratio=%i/%i\nrdir_free_ratio=%i/%i", \
-	superblock.total_blocks,superblock.fat_block_count,superblock.root_directory_index,superblock.data_block_start_index, \
+	printf("FS Info:\ntotal_blk_count=%i\nfat_blk_count=%i\nrdir_blk=%i\ndata_blk=%i\ndata_blk_count=%i\nfat_free_ratio=%i/%i\nrdir_free_ratio=%i/%i\n", 
+	superblock.total_blocks,superblock.fat_block_count,superblock.root_directory_index,superblock.data_block_start_index, 
 	superblock.data_block_count,BLOCK_SIZE-fatBlocksWritten,BLOCK_SIZE,FS_FILE_MAX_COUNT-filesWritten,FS_FILE_MAX_COUNT);
 
 	return 0;
@@ -318,6 +338,7 @@ int fs_delete(const char *filename)
 		}
 		temp_index = fatBlocks[fat_index]; // perform swap
 		fatBlocks[fat_index] = 0; // perform vanquish
+		fat_index = temp_index;
 	}
 
 	free(fatBlocks);
@@ -401,7 +422,6 @@ int fs_open(const char *filename)
 	/*
 	* Search for file name
 	*/
-	int rdir_idx;
 	for(int i = 0; i < FS_FILE_MAX_COUNT; i++){
 		if(strcmp(rdir[i].filename,fileStore) == 0){
 			fdArray[fd] = i;
@@ -520,7 +540,7 @@ int fs_write(int fd, void *buf, size_t count)
 	/*
 	* Given the first index in rdir, go to data block of file, perform write...
 	*/
-	int first_index = rdir[rdir_idx].first_data_block_index;
+	int block_index = rdir[rdir_idx].first_data_block_index; // first index of block array, as provided in FAT
 }
 
 int fs_read(int fd, void *buf, size_t count)
@@ -568,5 +588,5 @@ int fs_read(int fd, void *buf, size_t count)
 	/*
 	* Given the first index in rdir, go to data block of file, perform read...
 	*/
-	int first_index = rdir[rdir_idx].first_data_block_index;
+	int block_index = rdir[rdir_idx].first_data_block_index;
 }
