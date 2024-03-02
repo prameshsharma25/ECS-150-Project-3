@@ -27,11 +27,6 @@ typedef struct
 
 typedef struct
 {
-	uint16_t * entries;
-} FAT;
-
-typedef struct
-{
 	char filename[16];
 	uint32_t size;
 	uint16_t first_data_block_index;
@@ -42,12 +37,14 @@ typedef struct
 #pragma pack(pop)
 
 /*
-* -1 if fd is not valid, points to rdir entry of file, else
+* -1 if fd is not valid, points to rdir entry of file, else it points to the rdir index
 */
 static int fdArray[FS_OPEN_MAX_COUNT]; // index is 1-1 with fd
+static size_t offsetArray[FS_OPEN_MAX_COUNT]; // 1-1 with fdArray --> all initialized to 0
+static int openFiles = 0; // save computation by storing the number of files open
 
 /*
-* Count the number of rdir spots
+* Count the number of rdir spots taken
 */
 static int files_written(){
 	Superblock superblock;
@@ -71,6 +68,9 @@ static int files_written(){
 	return filesWritten;
 }
 
+/*
+* Count the number of fat spots taken
+*/
 int fat_blocks_written(){
 	Superblock superblock;
 	if (block_read(0, &superblock) == -1){
@@ -90,6 +90,21 @@ int fat_blocks_written(){
 		}
 	}
 	return fatBlocksWritten;
+}
+
+/*
+* Determine if fs is mounted
+*/
+int is_mounted(){
+	uint16_t fat_block_init[BLOCK_SIZE];
+	if (block_read(1, &fat_block_init) == -1){
+		return 0;
+	}
+
+	if(fat_block_init[0] != FAT_EOC){
+		return 0;
+	}
+	return 1;
 }
 
 int fs_mount(const char *diskname)
@@ -118,7 +133,8 @@ int fs_mount(const char *diskname)
 		return -1;
 	}
 
-	memset(fdArray,-1,FS_FILE_MAX_COUNT); // initialize fd array
+	memset(fdArray,-1,FS_OPEN_MAX_COUNT); // initialize fd array
+	memset(offsetArray,0,FS_OPEN_MAX_COUNT);
 	return 0;
 }
 
@@ -148,20 +164,19 @@ int fs_info(void)
 	printf("FS Info:\ntotal_blk_count=%i\nfat_blk_count=%i\nrdir_blk=%i\ndata_blk= \
 	%i\ndata_blk_count=%i\nfat_free_ratio=%i/%i\nrdir_free_ratio=%i/%i", \
 	superblock.total_blocks,superblock.fat_block_count,superblock.root_directory_index,superblock.data_block_start_index, \
-	superblock.data_block_count,BLOCK_SIZE-fatBlocksWritten,BLOCK_SIZE,128-filesWritten,128);
+	superblock.data_block_count,BLOCK_SIZE-fatBlocksWritten,BLOCK_SIZE,FS_FILE_MAX_COUNT-filesWritten,FS_FILE_MAX_COUNT);
 
 	return 0;
 }
 
 int fs_create(const char *filename)
 {
-	int filesWritten = files_written();
-	int fatBlocksWritten = fat_blocks_written();
 
-	if(fatBlocksWritten == 0){
+	if(!is_mounted()){
 		return -1; // disk hasnt been mounted yet
 	}
 
+	int filesWritten = files_written();
 
 	/*
 	* Obtain superblock
@@ -229,14 +244,13 @@ int fs_create(const char *filename)
 
 int fs_delete(const char *filename)
 {
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
+
 	Superblock superblock;
 	if (block_read(0, &superblock) == -1){
 		return -1;
-	}
-	int fatBlocksWritten = fat_blocks_written();
-
-	if(fatBlocksWritten == 0){
-		return -1; // disk hasnt been mounted yet
 	}
 
 	/*
@@ -312,14 +326,13 @@ int fs_delete(const char *filename)
 
 int fs_ls(void)
 {
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
+
 	Superblock superblock;
 	if (block_read(0, &superblock) == -1){
 		return -1;
-	}
-	int fatBlocksWritten = fat_blocks_written();
-
-	if(fatBlocksWritten == 0){
-		return -1; // disk hasnt been mounted yet
 	}
 
 	/*
@@ -342,30 +355,218 @@ int fs_ls(void)
 
 int fs_open(const char *filename)
 {
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
 
+	if(openFiles > FS_OPEN_MAX_COUNT){
+		return -1; // too many files open
+	}
+
+	char fileStore[FS_FILENAME_LEN];
+	memset(fileStore, 0, FS_FILENAME_LEN);
+	strcpy(fileStore,filename);
+	if(fileStore[FS_FILENAME_LEN - 1] != 0) {
+		return -1; // invalid size
+	}
+
+	/*
+	* Pick out open file descriptor
+	*/
+	int fd;
+	for(int i = 0; i < FS_OPEN_MAX_COUNT; ++i){
+		if(fdArray[i] == -1){
+			fd = i;
+			break;
+		}
+	}
+
+	/*
+	* Open superblock
+	*/
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+
+	/*
+	* Open root directory and add dir index to array
+	*/
+	Root_Directory rdir[FS_FILE_MAX_COUNT];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
+	}
+
+	/*
+	* Search for file name
+	*/
+	int rdir_idx;
+	for(int i = 0; i < FS_FILE_MAX_COUNT; i++){
+		if(strcmp(rdir[i].filename,fileStore) == 0){
+			fdArray[fd] = i;
+			break;
+		}
+	}
+	openFiles++;
+	return fd;
 }
 
 int fs_close(int fd)
 {
-	/* TODO: Phase 3 */
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
+	if((fdArray[fd] == -1) || (fd > 31)){
+		return -1; // its already closed!
+	}
+	else{
+		fdArray[fd] = -1; // defacto close
+		offsetArray[fd] = 0;
+		openFiles--;
+		return 0;
+	}
 }
 
 int fs_stat(int fd)
 {
-	/* TODO: Phase 3 */
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
+
+	if((fdArray[fd] == -1) || (fd > 31)){
+		return -1; // its closed or invalid
+	}
+
+	/*
+	* Open superblock
+	*/
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+
+	/*
+	* Open rdir
+	*/
+	Root_Directory rdir[FS_FILE_MAX_COUNT];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
+	}
+	int rdir_idx = fdArray[fd];
+	printf("%i\n",rdir[rdir_idx].size);
+	return 0;
 }
 
 int fs_lseek(int fd, size_t offset)
 {
-	/* TODO: Phase 3 */
+
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
+
+	if((fdArray[fd] == -1) || (fd > 31) || (fd < 0)){
+		return -1; // its closed or invalid
+	}
+
+	offsetArray[fd] = offset;
+	return 0;
+
 }
 
 int fs_write(int fd, void *buf, size_t count)
 {
-	/* TODO: Phase 4 */
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
+
+	if((fdArray[fd] == -1) || (fd > 31)){
+		return -1; // its closed or invalid
+	}
+
+	/*
+	* Open superblock
+	*/
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+
+	/*
+	* Open rdir
+	*/
+	Root_Directory rdir[FS_FILE_MAX_COUNT];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
+	}
+
+	int rdir_idx = fdArray[fd];
+
+	/*
+	* Open fat blocks
+	*/
+	uint16_t * fatBlocks = (uint16_t *)malloc(sizeof(uint16_t)*(BLOCK_SIZE*superblock.fat_block_count));
+	uint16_t tempFatBlock[BLOCK_SIZE];
+	for(int i = 1; i < superblock.root_directory_index; ++i){
+		if (block_read(i, &tempFatBlock ) == -1){
+			perror("Error when reading fat block from disk\n");
+			return -1;
+		}
+		memcpy(fatBlocks + (i-1)*BLOCK_SIZE,tempFatBlock,BLOCK_SIZE);
+	}
+
+	/*
+	* Given the first index in rdir, go to data block of file, perform write...
+	*/
+	int first_index = rdir[rdir_idx].first_data_block_index;
 }
 
 int fs_read(int fd, void *buf, size_t count)
 {
-	/* TODO: Phase 4 */
+	if(!is_mounted()){
+		return -1; // disk hasnt been mounted yet
+	}
+
+	if((fdArray[fd] == -1) || (fd > 31)){
+		return -1; // its closed or invalid
+	}
+
+	/*
+	* Open superblock
+	*/
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+
+	/*
+	* Open rdir
+	*/
+	Root_Directory rdir[FS_FILE_MAX_COUNT];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
+	}
+
+	int rdir_idx = fdArray[fd];
+
+	/*
+	* Open fat blocks
+	*/
+	uint16_t * fatBlocks = (uint16_t *)malloc(sizeof(uint16_t)*(BLOCK_SIZE*superblock.fat_block_count));
+	uint16_t tempFatBlock[BLOCK_SIZE];
+	for(int i = 1; i < superblock.root_directory_index; ++i){
+		if (block_read(i, &tempFatBlock ) == -1){
+			perror("Error when reading fat block from disk\n");
+			return -1;
+		}
+		memcpy(fatBlocks + (i-1)*BLOCK_SIZE,tempFatBlock,BLOCK_SIZE);
+	}
+
+	/*
+	* Given the first index in rdir, go to data block of file, perform read...
+	*/
+	int first_index = rdir[rdir_idx].first_data_block_index;
 }
