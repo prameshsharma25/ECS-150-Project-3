@@ -42,20 +42,61 @@ typedef struct
 #pragma pack(pop)
 
 
-static Superblock superblock;
 static FAT fat;
-static int filesWritten = 0;
-static int fatBlocksWritten = 0;
 
+/*
+* Count the number of rdir spots
+*/
+static int files_written(){
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+	Root_Directory rdir[128];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
+	}
+	int filesWritten = 0;
+	for(int i = 0; i < 128; ++i){
+		if(rdir[i].filename[0] == 0){
+			// nothing
+		}
+		else{
+			filesWritten++;
+		}
+	}
+	return filesWritten;
+}
+
+int fat_blocks_written(){
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+	uint16_t tempFatBlock[BLOCK_SIZE];
+	int fatBlocksWritten = 0;
+	for(int i = 1; i < superblock.root_directory_index; i++){
+		if (block_read(i, &tempFatBlock ) == -1){
+			perror("Error when reading fat block from disk\n");
+			return -1;
+		}
+		for(int j = 0; j < BLOCK_SIZE; j++){
+			if(tempFatBlock[j] != 0){
+				fatBlocksWritten++;
+			}
+		}
+	}
+	return fatBlocksWritten;
+}
 
 int fs_mount(const char *diskname)
 {
 	if (block_disk_open(diskname) == -1){
 		return -1;
 	}
-
+	Superblock superblock;
 	if (block_read(0, &superblock) == -1){
-		block_disk_close();
 		return -1;
 	}
 
@@ -66,7 +107,6 @@ int fs_mount(const char *diskname)
 
 	uint16_t fat_block_init[BLOCK_SIZE];
 	if (block_read(1, &fat_block_init) == -1){
-		block_disk_close();
 		return -1;
 	}
 
@@ -75,7 +115,7 @@ int fs_mount(const char *diskname)
 	if(block_write(1, &fat_block_init) == -1){
 		return -1;
 	}
-	fatBlocksWritten++;
+	//fatBlocksWritten++;
 
 
 	return 0;
@@ -96,14 +136,13 @@ int fs_umount(void)
 
 int fs_info(void)
 {
-	if(fatBlocksWritten == 0){
-		return -1; // disk hasnt been mounted yet
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
 	}
 
-	if(filesWritten == 0){
-		printf("FS Info:\n");
-		return 0;
-	}
+	int filesWritten = files_written();
+	int fatBlocksWritten = fat_blocks_written();
 
 	printf("FS Info:\ntotal_blk_count=%i\nfat_blk_count=%i\nrdir_blk=%i\ndata_blk= \
 	%i\ndata_blk_count=%i\nfat_free_ratio=%i/%i\nrdir_free_ratio=%i/%i", \
@@ -115,6 +154,13 @@ int fs_info(void)
 
 int fs_create(const char *filename)
 {
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+
+	int filesWritten = files_written();
+	int fatBlocksWritten = fat_blocks_written();
 
 	if(fatBlocksWritten == 0){
 		return -1; // disk hasnt been mounted yet
@@ -192,7 +238,7 @@ int fs_create(const char *filename)
 		}
 
 		/*
-		* Determine first free entry in fat -- > write to corresponding data block
+		* Determine free entries in fat -- > write to corresponding data block
 		*/
 		char dataBlock[BLOCK_SIZE];
 		int dataBlocksWritten = 0;
@@ -226,6 +272,9 @@ int fs_create(const char *filename)
 					read(fd,dataBlock,sizeLeft);
 					fatBlocks[i] = FAT_EOC;
 				}
+				/*
+				* Write data block back into disk
+				*/
 				if (block_write(i+superblock.data_block_start_index, &dataBlock) == -1){
 						perror("Error when writing data block back into disk\n");
 						return -1;
@@ -235,8 +284,17 @@ int fs_create(const char *filename)
 			}
 		}
 		/*
-		* Write fat back into disk
+		* Write fat back into disk (sequentially)
 		*/
+		for(int i = 1; i < superblock.root_directory_index; i++){
+			memcpy(tempFatBlock, fatBlocks + (i-1)*BLOCK_SIZE,BLOCK_SIZE);
+			if (block_write(i, &tempFatBlock) == -1){
+				perror("Error when reading fat block from disk\n");
+				return -1;
+			}
+		}
+
+		free(fatBlocks); // we are done with this
 
 	}
 	for(int i = 0; i < 128; ++i){
@@ -250,14 +308,18 @@ int fs_create(const char *filename)
 		return -1;
 	}
 
-
 	close(fd); // we dont need this file anymore in local
-
+	return 0;
 
 }
 
 int fs_delete(const char *filename)
 {
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+	int fatBlocksWritten = fat_blocks_written();
 
 	if(fatBlocksWritten == 0){
 		return -1; // disk hasnt been mounted yet
@@ -277,23 +339,90 @@ int fs_delete(const char *filename)
 	* Fetch rdir block from disk
 	*/
 	Root_Directory rdir[128];
+	Root_Directory dirRemoval;
+	int file_exists = 0;
+	int rdir_index;
 	if (block_read(superblock.root_directory_index, &rdir) == -1){
 		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
+	for(int i = 0; i < 128; ++i){
+		if(strcmp(rdir[i].filename,fileStore) == 0){
+			file_exists = 1;
+			dirRemoval = rdir[i];
+			rdir_index = i;
+			break;
+		}
+	}
 
+	if(!file_exists){
+		return -1;
+	}
 
-	
+	int blockSpan = ceil(dirRemoval.size/BLOCK_SIZE); // number of blocks the data will be written to
+	if(blockSpan == 0){
+		Root_Directory empty_directory;
+		rdir[rdir_index] = empty_directory; // effectively removes size zero file
+		return 0;
+	}
+
+	/*
+	* Fetch fat blocks from disk
+	*/
+
+	uint16_t * fatBlocks = (uint16_t *)malloc(sizeof(uint16_t)*(BLOCK_SIZE*superblock.fat_block_count));
+	uint16_t tempFatBlock[BLOCK_SIZE];
+	for(int i = 1; i < superblock.root_directory_index; ++i){
+		if (block_read(i, &tempFatBlock ) == -1){
+			perror("Error when reading fat block from disk\n");
+			return -1;
+		}
+		memcpy(fatBlocks + (i-1)*BLOCK_SIZE,tempFatBlock,BLOCK_SIZE);
+	}
+
+	int fat_index = dirRemoval.first_data_block_index;
+	int temp_index;
+	char dataBlock[BLOCK_SIZE]; // empty datablock cell
+	for(int i = 0; i < blockSpan; ++i){
+		if(block_write(fat_index + superblock.data_block_start_index, &dataBlock) == -1){ // override data block
+			perror("Error when writing data block back into disk\n");
+			return -1;
+		}
+		temp_index = fatBlocks[fat_index]; // perform swap
+		fatBlocks[fat_index] = 0; // perform vanquish
+	}
+
+	free(fatBlocks);
+	return 0;
 }
 
 int fs_ls(void)
 {
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+	int fatBlocksWritten = fat_blocks_written();
 
 	if(fatBlocksWritten == 0){
 		return -1; // disk hasnt been mounted yet
 	}
 
+	/*
+	* Fetch rdir block from disk
+	*/
+	Root_Directory rdir[128];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
+	}
 
+	printf("FS Ls:\n");
+	for(int i = 0; i < 128; ++i){
+		if(rdir[i].filename[0] == 0){
+			printf("file: %s, size: %i, data_blk: %i",rdir[i].filename,rdir[i].size,rdir[i].first_data_block_index);
+		}
+	}
 
 }
 
