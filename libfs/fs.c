@@ -41,8 +41,10 @@ typedef struct
 
 #pragma pack(pop)
 
-
-static FAT fat;
+/*
+* -1 if fd is not valid, points to rdir entry of file, else
+*/
+static int fdArray[FS_OPEN_MAX_COUNT]; // index is 1-1 with fd
 
 /*
 * Count the number of rdir spots
@@ -115,9 +117,8 @@ int fs_mount(const char *diskname)
 	if(block_write(1, &fat_block_init) == -1){
 		return -1;
 	}
-	//fatBlocksWritten++;
 
-
+	memset(fdArray,-1,FS_FILE_MAX_COUNT); // initialize fd array
 	return 0;
 }
 
@@ -154,11 +155,6 @@ int fs_info(void)
 
 int fs_create(const char *filename)
 {
-	Superblock superblock;
-	if (block_read(0, &superblock) == -1){
-		return -1;
-	}
-
 	int filesWritten = files_written();
 	int fatBlocksWritten = fat_blocks_written();
 
@@ -166,33 +162,33 @@ int fs_create(const char *filename)
 		return -1; // disk hasnt been mounted yet
 	}
 
+
 	/*
-	* Proper init and err checking
+	* Obtain superblock
 	*/
-	if(filesWritten == 128){
+	Superblock superblock;
+	if (block_read(0, &superblock) == -1){
+		return -1;
+	}
+
+
+	/*
+	* Proper file init and err checking
+	*/
+	if(filesWritten == FS_FILE_MAX_COUNT){
 		return -1; // too many files
 	}
-	char fileStore[16];
-	memset(fileStore, 0, 16);
+	char fileStore[FS_FILENAME_LEN];
+	memset(fileStore, 0, FS_FILENAME_LEN);
 	strcpy(fileStore,filename);
-	if(fileStore[15] != 0) {
+	if(fileStore[FS_FILENAME_LEN - 1] != 0) {
 		return -1; // invalid size
 	}
-	
-	/*
-	* Attempt to open file
-	*/
-	int fd;
-	if((fd = open(fileStore, O_RDWR, 0644) < 0)){
-		return -1; // problem with opening file
-	}
-	struct stat st;
-	fstat(fd, &st); // obtain file size
 
 	/*
 	* Fetch rdir block from disk
 	*/
-	Root_Directory rdir[128];
+	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1){
 		perror("Error when reading root directory from disk\n");
 		return -1;
@@ -201,8 +197,8 @@ int fs_create(const char *filename)
 	/*
 	* See if filename already exists
 	*/
-	for(int i = 0; i < 128; i++){
-		if((strcmp(rdir[i].filename,fileStore)) == 0){
+	for(int i = 0; i < FS_FILE_MAX_COUNT; i++){
+		if(strcmp(rdir[i].filename,fileStore) == 0){
 			printf("filename already exists! at %i",rdir[i].first_data_block_index);
 			return -1;
 		}
@@ -213,102 +209,20 @@ int fs_create(const char *filename)
 	*/
 	Root_Directory new_dir_entry;
 	strcpy(new_dir_entry.filename,fileStore);
-	new_dir_entry.size = st.st_size;
+	new_dir_entry.size = 0;
+	new_dir_entry.first_data_block_index = FAT_EOC;
 
-	/*
-	* Add file to free data block and configure FAT
-	*/
-	int blockSpan = ceil(new_dir_entry.size/BLOCK_SIZE); // number of blocks the data will be written to
-	if(blockSpan == 0){
-		new_dir_entry.first_data_block_index = FAT_EOC;
-	}
-	else{
-
-		/*
-		* Extract Fat Cells
-		*/
-		uint16_t * fatBlocks = (uint16_t *)malloc(sizeof(uint16_t)*(BLOCK_SIZE*superblock.fat_block_count));
-		uint16_t tempFatBlock[BLOCK_SIZE];
-		for(int i = 1; i < superblock.root_directory_index; i++){
-			if (block_read(i, &tempFatBlock ) == -1){
-				perror("Error when reading fat block from disk\n");
-				return -1;
-			}
-			memcpy(fatBlocks + (i-1)*BLOCK_SIZE,tempFatBlock,BLOCK_SIZE);
-		}
-
-		/*
-		* Determine free entries in fat -- > write to corresponding data block
-		*/
-		char dataBlock[BLOCK_SIZE];
-		int dataBlocksWritten = 0;
-		int sizeLeft = new_dir_entry.size;
-		int prevFatIndex = -1;
-		for(int i = 0; i < superblock.data_block_count; ++i){
-			if(dataBlocksWritten == blockSpan){
-				break;
-			}
-			if(fatBlocks[i] == 0){
-				if(prevFatIndex == -1){
-					new_dir_entry.first_data_block_index = i;
-				}
-				if (block_read(i+superblock.data_block_start_index, &dataBlock) == -1){
-					perror("Error when reading data block from disk\n");
-					return -1;
-				}
-				if(sizeLeft > BLOCK_SIZE){
-					if(prevFatIndex != -1){
-						fatBlocks[prevFatIndex] = i;
-					}
-					read(fd,dataBlock,BLOCK_SIZE);
-					lseek(fd,BLOCK_SIZE,SEEK_CUR); // move BLOCK_SIZE bytes in file
-					sizeLeft -= BLOCK_SIZE;
-		
-					
-				} else{
-					if(prevFatIndex != -1){
-						fatBlocks[prevFatIndex] = i;
-					}
-					read(fd,dataBlock,sizeLeft);
-					fatBlocks[i] = FAT_EOC;
-				}
-				/*
-				* Write data block back into disk
-				*/
-				if (block_write(i+superblock.data_block_start_index, &dataBlock) == -1){
-						perror("Error when writing data block back into disk\n");
-						return -1;
-				}
-				prevFatIndex = i;
-				dataBlocksWritten++;		
-			}
-		}
-		/*
-		* Write fat back into disk (sequentially)
-		*/
-		for(int i = 1; i < superblock.root_directory_index; i++){
-			memcpy(tempFatBlock, fatBlocks + (i-1)*BLOCK_SIZE,BLOCK_SIZE);
-			if (block_write(i, &tempFatBlock) == -1){
-				perror("Error when reading fat block from disk\n");
-				return -1;
-			}
-		}
-
-		free(fatBlocks); // we are done with this
-
-	}
-	for(int i = 0; i < 128; ++i){
+	for(int i = 0; i < FS_FILE_MAX_COUNT; ++i){
 		if (rdir[i].filename[0] == 0){ // first letter is null terminated
-			// add new directory entry
-			rdir[i] = new_dir_entry;
+			rdir[i] = new_dir_entry; // add new directory entry if empty
 		}
 	}
+
 	if (block_write(superblock.root_directory_index, &rdir) == -1){
 		perror("Error when writing root directory back to disk\n");
 		return -1;
 	}
 
-	close(fd); // we dont need this file anymore in local
 	return 0;
 
 }
@@ -338,7 +252,7 @@ int fs_delete(const char *filename)
 	/*
 	* Fetch rdir block from disk
 	*/
-	Root_Directory rdir[128];
+	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	Root_Directory dirRemoval;
 	int file_exists = 0;
 	int rdir_index;
@@ -346,7 +260,7 @@ int fs_delete(const char *filename)
 		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
-	for(int i = 0; i < 128; ++i){
+	for(int i = 0; i < FS_FILE_MAX_COUNT; ++i){
 		if(strcmp(rdir[i].filename,fileStore) == 0){
 			file_exists = 1;
 			dirRemoval = rdir[i];
@@ -411,14 +325,14 @@ int fs_ls(void)
 	/*
 	* Fetch rdir block from disk
 	*/
-	Root_Directory rdir[128];
+	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1){
 		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
 	printf("FS Ls:\n");
-	for(int i = 0; i < 128; ++i){
+	for(int i = 0; i < FS_FILE_MAX_COUNT; ++i){
 		if(rdir[i].filename[0] == 0){
 			printf("file: %s, size: %i, data_blk: %i",rdir[i].filename,rdir[i].size,rdir[i].first_data_block_index);
 		}
@@ -428,7 +342,7 @@ int fs_ls(void)
 
 int fs_open(const char *filename)
 {
-	/* TODO: Phase 3 */
+
 }
 
 int fs_close(int fd)
