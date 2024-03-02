@@ -62,11 +62,13 @@ int fs_mount(const char *diskname)
 	}
 
 	uint16_t fat_block_init[BLOCK_SIZE]; // temporary array which takes what it can from each fat block 
-	fat_block_init[0] = FAT_EOC; 
+	fat_block_init[0] = FAT_EOC; // make sure first entry is FAT_EOC
 	if(block_write(1, &fat_block_init) == -1){
 		return -1;
 	}
 	fatBlocksWritten++;
+
+
 	return 0;
 }
 
@@ -85,6 +87,20 @@ int fs_umount(void)
 
 int fs_info(void)
 {
+	if(superblock.data_block_count == 0){
+		return -1; // disk hasnt been mounted yet
+	}
+
+	if(filesWritten == 0){
+		printf("FS Info:\n");
+		return 0;
+	}
+	
+	printf("FS Info:\ntotal_blk_count=%i\nfat_blk_count=%i\nrdir_blk=%i\ndata_blk= \
+	%i\ndata_blk_count=%i\nfat_free_ratio=%i/%i\nrdir_free_ratio=%i/%i", \
+	superblock.total_blocks,superblock.fat_block_count,superblock.root_directory_index,superblock.data_block_start_index, \
+	superblock.data_block_count,4096-fatBlocksWritten,128-filesWritten);
+
 	return 0;
 }
 
@@ -111,18 +127,32 @@ int fs_create(const char *filename)
 	if((fd = open(fileStore, O_RDWR, 0644) < 0)){
 		return -1; // problem with opening file
 	}
+	struct stat st;
+	fstat(fd, &st); // obtain file size
 
 	/*
-	* Add file to rdir
+	* Fetch rdir block from disk
 	*/
-	
+	Root_Directory rdir[128];
+	if (block_read(superblock.root_directory_index, &rdir) == -1){
+		perror("Error when reading root directory from disk\n");
+		return -1;
+	}
+
+	/*
+	* Add new rdir entry
+	*/
 	Root_Directory new_dir_entry;
-	struct stat st;
-	fstat(fd, &st);
-	
-	new_dir_entry.filename = fileStore;
+	strcpy(new_dir_entry.filename,fileStore);
 	new_dir_entry.size = st.st_size;
 	new_dir_entry.first_data_block_index = 
+
+	/*
+	* Add file to free data block
+	*/
+
+
+	close(fd); // we dont need this file anymore in local
 
 
 }
