@@ -108,7 +108,7 @@ int fs_info(void)
 	printf("FS Info:\ntotal_blk_count=%i\nfat_blk_count=%i\nrdir_blk=%i\ndata_blk= \
 	%i\ndata_blk_count=%i\nfat_free_ratio=%i/%i\nrdir_free_ratio=%i/%i", \
 	superblock.total_blocks,superblock.fat_block_count,superblock.root_directory_index,superblock.data_block_start_index, \
-	superblock.data_block_count,4096-fatBlocksWritten,128-filesWritten);
+	superblock.data_block_count,BLOCK_SIZE-fatBlocksWritten,BLOCK_SIZE,128-filesWritten,128);
 
 	return 0;
 }
@@ -153,7 +153,17 @@ int fs_create(const char *filename)
 	}
 
 	/*
-	* Add new rdir entry
+	* See if filename already exists
+	*/
+	for(int i = 0; i < 128; i++){
+		if((strcmp(rdir[i].filename,fileStore)) == 0){
+			printf("filename already exists! at %i",rdir[i].first_data_block_index);
+			return -1;
+		}
+	}
+
+	/*
+	* Create new rdir entry
 	*/
 	Root_Directory new_dir_entry;
 	strcpy(new_dir_entry.filename,fileStore);
@@ -193,6 +203,9 @@ int fs_create(const char *filename)
 				break;
 			}
 			if(fatBlocks[i] == 0){
+				if(prevFatIndex == -1){
+					new_dir_entry.first_data_block_index = i;
+				}
 				if (block_read(i+superblock.data_block_start_index, &dataBlock) == -1){
 					perror("Error when reading data block from disk\n");
 					return -1;
@@ -214,16 +227,15 @@ int fs_create(const char *filename)
 					fatBlocks[i] = FAT_EOC;
 				}
 				if (block_write(i+superblock.data_block_start_index, &dataBlock) == -1){
-						perror("Error when reading data block from disk\n");
+						perror("Error when writing data block back into disk\n");
 						return -1;
 				}
 				prevFatIndex = i;
-				dataBlocksWritten++;
-				
+				dataBlocksWritten++;		
 			}
 		}
 		/*
-		* Write root directory back into disk
+		* Write fat back into disk
 		*/
 
 	}
