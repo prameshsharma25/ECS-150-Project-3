@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -6,9 +7,6 @@
 
 #include "disk.h"
 #include "fs.h"
-
-#define BLOCK_SIZE 512
-#define FAT_ENTRIES_PER_BLOCK (BLOCK_SIZE / sizeof(uint16_t))
 
 #pragma pack(push, 1)
 
@@ -25,7 +23,7 @@ typedef struct
 
 typedef struct
 {
-	uint16_t entries[FAT_ENTRIES_PER_BLOCK];
+	uint16_t  * entries;
 } FAT;
 
 typedef struct
@@ -37,25 +35,27 @@ typedef struct
 
 } Root_Directory;
 
+static Superblock superblock;
+static FAT fat;
+static Root_Directory root;
+
 #pragma pack(pop)
 
 int fs_mount(const char *diskname)
 {
-	if (block_disk_open(diskname) == -1)
-	{
+	if (block_disk_open(diskname) == -1){
 		return -1;
 	}
 
-	Superblock superblock;
-	if (block_read(0, &superblock) == -1)
-	{
+	if (block_read(0, &superblock) == -1){
 		block_disk_close();
 		return -1;
 	}
 
-	if (stcmp(superblock.signature, "ECS150FS") != 0 || superblock.total_blocks != block_disk_count())
-	{
-		block_disk_close();
+	printf("%s %i %i %i %i %i \n",superblock.signature,superblock.total_blocks,superblock.root_directory_index,
+	superblock.data_block_start_index,superblock.data_block_count,superblock.fat_block_count);
+
+	if(strcmp(superblock.signature,"ECS150FS") != 0){
 		return -1;
 	}
 
@@ -64,15 +64,14 @@ int fs_mount(const char *diskname)
 
 int fs_umount(void)
 {
-	if (block_disk_count() == -1)
-	{
+	if (block_disk_count() == -1){
 		return -1;
 	}
 
-	if (block_disk_close() == -1)
-	{
+	if (block_disk_close() == -1){
 		return -1;
 	}
+
 
 	return 0;
 }
@@ -84,7 +83,17 @@ int fs_info(void)
 
 int fs_create(const char *filename)
 {
-	/* TODO: Phase 2 */
+	char fileStore[17];
+	memset(fileStore, 0, 17);
+	strcpy(fileStore,filename);
+	if(fileStore[16] != 0) {
+		return -1; // invalid size
+	}
+	int fd;
+	if(fd = open(fileStore, O_RDWR, 0644) < 0){
+		return -1; // problem with opening file
+	}
+
 }
 
 int fs_delete(const char *filename)
