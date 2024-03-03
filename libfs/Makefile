@@ -3,7 +3,7 @@ lib := libfs.a
 
 CC = gcc
 
-CFLAGS	:= -Wall -Wextra -Werror -g -c -o
+CFLAGS	:= -Wall -Wextra -g -c -o
 
 all: $(lib)
 
@@ -19,4 +19,4 @@ fs.o: fs.c fs.h
 
 clean:
 	rm -rf *.o *.a
-	cd ../apps; rm -rf *.o *.d *.x
+	cd ../apps; rm -rf *.o *.d
