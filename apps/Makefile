@@ -1,5 +1,5 @@
 # Target programs
-programs := test_unit.x 
+programs := simple_reader.x 
 
 # File-system library
 FSLIB := libfs
@@ -25,7 +25,7 @@ CUR_PWD := $(shell pwd)
 CC	= gcc
 
 # General gcc options
-CFLAGS	:= -Wall
+CFLAGS	:= -Wall -Werror
 CFLAGS	+= -pipe
 ## Debug flag
 ifneq ($(D),1)

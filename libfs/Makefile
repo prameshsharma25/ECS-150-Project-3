@@ -3,7 +3,7 @@ lib := libfs.a
 
 CC = gcc
 
-CFLAGS	:= -Wall -Wextra -g -c -o
+CFLAGS	:= -Wall -Wextra -Werror -g -c -o
 
 all: $(lib)
 
