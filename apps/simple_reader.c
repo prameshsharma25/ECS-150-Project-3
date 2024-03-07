@@ -32,13 +32,15 @@ int main(int argc, char *argv[])
 	/* Open file */
 	fd = fs_open("myfile");
 	ASSERT(fd >= 0, "fs_open");
+	fs_ls();
 
 	/* Read some data */
 	fs_lseek(fd, 12);
 	ret = fs_read(fd, data, 10);
 	ASSERT(ret == 10, "fs_read");
+	printf("Got ret val: %i\n",ret);
+	printf("Got buffer: %s\n",data);
 	ASSERT(!strncmp(data, "mnopqrstuv", 10), "fs_read");
-
 	/* Close file and unmount */
 	fs_close(fd);
 	fs_umount();
