@@ -597,7 +597,7 @@ int fs_read(int fd, void *buf, size_t count)
 	while(1){
 		block_read(block_index + superblock.data_block_start_index, &data_block);
 		if(count > BLOCK_SIZE - offset){
-			memcpy(buf, data_block + offset,BLOCK_SIZE - offset);
+			memcpy(buf + bytes_read, data_block + offset,BLOCK_SIZE - offset);
 			bytes_read += (int)(BLOCK_SIZE - offset);
 			count -= BLOCK_SIZE - offset;
 			offset = 0;
@@ -606,7 +606,7 @@ int fs_read(int fd, void *buf, size_t count)
 				break;
 			}
 		} else {
-			memcpy(buf, data_block + offset,count);
+			memcpy(buf + bytes_read, data_block + offset,count);
 			bytes_read += (int)count;
 			break;
 		}
