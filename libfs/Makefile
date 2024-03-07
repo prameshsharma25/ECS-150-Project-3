@@ -9,7 +9,7 @@ all: $(lib)
 
 ## TODO: Phase 1
 $(lib): disk.o fs.o
-	ar rcs $@ $^
+	ar rcs $@ $^ -lm
 
 disk.o: disk.c disk.h
 	$(CC) $(CFLAGS) $@ $<
