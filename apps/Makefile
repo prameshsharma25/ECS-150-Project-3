@@ -39,7 +39,7 @@ CFLAGS 	+= -I$(FSPATH)
 CFLAGS	+= -MMD
 
 # Linker options
-LDFLAGS := -L$(FSPATH) -lfs
+LDFLAGS := -L$(FSPATH) -lfs -lm
 
 # Application objects to compile
 objs := $(patsubst %.x,%.o,$(programs))
@@ -56,7 +56,7 @@ $(libfs): FORCE
 # Generic rule for linking final applications
 %.x: %.o $(libfs)
 	@echo "LD	$@"
-	$(Q)$(CC) -g -o $@ $< $(LDFLAGS) -lm
+	$(Q)$(CC) -g -o $@ $< $(LDFLAGS)
 
 # Generic rule for compiling objects
 %.o: %.c
