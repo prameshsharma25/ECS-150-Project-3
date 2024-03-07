@@ -121,6 +121,21 @@ int fat_blocks_written()
 	return fatBlocksWritten;
 }
 
+/*
+* Allocate the next block from FAT
+*/
+int fs_allocate_block(uint16_t *fatBlocks, int data_block_count) {
+    // Find a free block in the FAT
+    for (int i = 0; i < data_block_count; i++) {
+        if (fatBlocks[i] == 0) {
+            fatBlocks[i] = FAT_EOC;
+            return i;
+        }
+    }
+    // No free blocks available
+    return -1;
+}
+
 int fs_mount(const char *diskname)
 {
 	if (block_disk_open(diskname) == -1)
