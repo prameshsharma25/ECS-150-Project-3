@@ -631,59 +631,78 @@ int fs_write(int fd, void *buf, size_t count)
 	}
 
 	/*
-	* Need to determine where exactly to begin writing.. do so by checking whether or not 
-	* current index is FAT_EOC => we need a new spot. We can do some basic arithmetic with the
-	* size of the file to determine whether or not we need a new fat cell.
- 	*/
-	//int size = rdir[rdir_idx].size;
+	 * Need to determine where exactly to begin writing.. do so by checking whether or not
+	 * current index is FAT_EOC => we need a new spot. We can do some basic arithmetic with the
+	 * size of the file to determine whether or not we need a new fat cell.
+	 */
+	// int size = rdir[rdir_idx].size;
 	int amtLeft = (int)count;
 	int prev_idx;
 	int block_index;
- 	if (rdir[rdir_idx].first_data_block_index == FAT_EOC){
+	if (rdir[rdir_idx].first_data_block_index == FAT_EOC)
+	{
 		int set_rdir_idx = 1;
-		for(int i = 0; i < BLOCK_SIZE * superblock.fat_block_count; ++i){ // find free spot!
-			if(fatBlocks[i] == 0){
-				if(set_rdir_idx){
+		for (int i = 0; i < BLOCK_SIZE * superblock.fat_block_count; ++i)
+		{ // find free spot!
+			if (fatBlocks[i] == 0)
+			{
+				if (set_rdir_idx)
+				{
 					rdir[rdir_idx].first_data_block_index = i;
 					fatBlocks[i] = FAT_EOC;
 					prev_idx = i;
 					set_rdir_idx = 0;
-				} else {
+				}
+				else
+				{
 					fatBlocks[prev_idx] = i;
 					fatBlocks[i] = FAT_EOC;
 					prev_idx = i;
 				}
-				amtLeft-=BLOCK_SIZE;
-				if(amtLeft > 0){
+				amtLeft -= BLOCK_SIZE;
+				if (amtLeft > 0)
+				{
 					continue;
-				} else {
+				}
+				else
+				{
 					break;
 				}
 			}
 		}
-		if(set_rdir_idx == 1){ // theres no space for anything
+		if (set_rdir_idx == 1)
+		{ // theres no space for anything
 			return 0;
 		}
-	} else {
+	}
+	else
+	{
 		size_t num_fat_blocks = 0;
 		block_index = rdir[rdir_idx].first_data_block_index;
-		while(block_index != FAT_EOC){ // find last index
+		while (block_index != FAT_EOC)
+		{ // find last index
 			num_fat_blocks++;
 			prev_idx = block_index;
 			block_index = fatBlocks[block_index];
 		}
-		amtLeft = num_fat_blocks*BLOCK_SIZE - count;
-		if(count > num_fat_blocks*BLOCK_SIZE){
-			for(int i = 0; i < BLOCK_SIZE * superblock.fat_block_count; ++i){ // find free spot!
-				if(fatBlocks[i] == 0){
+		amtLeft = num_fat_blocks * BLOCK_SIZE - count;
+		if (count > num_fat_blocks * BLOCK_SIZE)
+		{
+			for (int i = 0; i < BLOCK_SIZE * superblock.fat_block_count; ++i)
+			{ // find free spot!
+				if (fatBlocks[i] == 0)
+				{
 					fatBlocks[prev_idx] = i;
 					fatBlocks[i] = FAT_EOC;
 					prev_idx = i;
 
-					amtLeft-=BLOCK_SIZE;
-					if(amtLeft > 0){
+					amtLeft -= BLOCK_SIZE;
+					if (amtLeft > 0)
+					{
 						continue;
-					} else {
+					}
+					else
+					{
 						break;
 					}
 				}
@@ -695,55 +714,10 @@ int fs_write(int fd, void *buf, size_t count)
 	 * Given the first index in rdir, go to data block of file
 	 */
 	block_index = rdir[rdir_idx].first_data_block_index; // first index of block array, as provided in FAT
-	//printf("%p %ld %i", buf, count, block_index);
+	// printf("%p %ld %i", buf, count, block_index);
 	int next_index;
 	size_t offset = offsetArray[fd];
-	/* char *buffer_ptr = (char *)buf;
-	while (block_index != FAT_EOC && bytes_written < count)
-	{
-		size_t remaining_space = count - bytes_written;
-		size_t bytes_to_write = remaining_space < BLOCK_SIZE ? remaining_space : BLOCK_SIZE;
-		
-		if (block_write(block_index + superblock.data_block_start_index, buffer_ptr) == -1)
-		{
-			free(fatBlocks);
-			return -1;
-		}
 
-		int next_block_index = fatBlocks[block_index];
-        if (next_block_index == FAT_EOC)
-        {
-            int new_block_index = fs_allocate_block(fatBlocks, superblock.data_block_count);
-            if (new_block_index == -1)
-            {
-                free(fatBlocks);
-                return -1;
-            }
-
-            fatBlocks[block_index] = new_block_index;
-            fatBlocks[new_block_index] = FAT_EOC;
-
-            if (bytes_written == 0)
-            {
-                rdir[rdir_idx].first_data_block_index = new_block_index;
-                if (block_write(superblock.root_directory_index, &rdir) == -1)
-                {
-                    free(fatBlocks);
-                    return -1;
-                }
-            }
-
-            block_index = new_block_index;
-        }
-        else
-        {
-            block_index = next_block_index;
-        }
-
-        // Update pointers and counters
-        bytes_written += bytes_to_write;
-        buffer_ptr += bytes_to_write;
-    } */
 	/*
 	* Go to position in FAT array - seek to the offset -
 	  break with desired index.
@@ -773,11 +747,11 @@ int fs_write(int fd, void *buf, size_t count)
 	 */
 
 	char data_block[BLOCK_SIZE];
-	int bytes_written= 0;
+	int bytes_written = 0;
 	while (1)
 	{
 		block_read(block_index + superblock.data_block_start_index, &data_block); // read block from disk
-		if (count > BLOCK_SIZE - offset) // if the count is bigger than the number of remaining blocks
+		if (count > BLOCK_SIZE - offset)										  // if the count is bigger than the number of remaining blocks
 		{
 			memcpy(data_block + offset, buf + bytes_written, BLOCK_SIZE - offset);
 			block_write(block_index + superblock.data_block_start_index, &data_block);
