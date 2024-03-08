@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <fcntl.h>
-#include "math.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -43,6 +42,44 @@ typedef struct
 static int fdArray[FS_OPEN_MAX_COUNT];		  // index is 1-1 with fd
 static size_t offsetArray[FS_OPEN_MAX_COUNT]; // 1-1 with fdArray --> all initialized to 0
 static int openFiles = 0;					  // save computation by storing the number of files open
+
+/*
+ * round from scratch
+ */
+double round(double x)
+{
+	double fractionalPart = x - (int)x;
+
+	// If the fractional part is exactly 0.5, round to the nearest even integer
+	if (fractionalPart == 0.5)
+	{
+		// If the integer part is odd, round up
+		if ((int)x % 2 != 0)
+			return x + 0.5;
+		else
+			return x - 0.5;
+	}
+
+	return x >= 0 ? (int)(x + 0.5) : (int)(x - 0.5);
+}
+
+/*
+ * ceil from scratch
+ */
+double ceil(double x)
+{
+	int intPart = (int)x;
+
+	// If x is already an integer, return x
+	if (x == intPart)
+		return x;
+
+	// If x is negative, return its integer part
+	if (x < 0)
+		return intPart;
+
+	return intPart + 1.0;
+}
 
 /*
  * Determine if mounted or not
@@ -122,18 +159,21 @@ int fat_blocks_written()
 }
 
 /*
-* Allocate the next block from FAT
-*/
-int fs_allocate_block(uint16_t *fatBlocks, int data_block_count) {
-    // Find a free block in the FAT
-    for (int i = 0; i < data_block_count; i++) {
-        if (fatBlocks[i] == 0) {
-            fatBlocks[i] = FAT_EOC;
-            return i;
-        }
-    }
-    // No free blocks available
-    return -1;
+ * Allocate the next block from FAT
+ */
+int fs_allocate_block(uint16_t *fatBlocks, int data_block_count)
+{
+	// Find a free block in the FAT
+	for (int i = 0; i < data_block_count; i++)
+	{
+		if (fatBlocks[i] == 0)
+		{
+			fatBlocks[i] = FAT_EOC;
+			return i;
+		}
+	}
+	// No free blocks available
+	return -1;
 }
 
 int fs_mount(const char *diskname)
@@ -615,8 +655,8 @@ int fs_write(int fd, void *buf, size_t count)
 	char *buffer_ptr = (char *)buf;
 
 	/*
-	* Write data from data block
-	*/
+	 * Write data from data block
+	 */
 	while (block_index != FAT_EOC && bytes_written < count)
 	{
 		size_t remaining_space = count - bytes_written;

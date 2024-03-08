@@ -39,7 +39,7 @@ CFLAGS 	+= -I$(FSPATH)
 CFLAGS	+= -MMD
 
 # Linker options
-LDFLAGS := -L$(FSPATH) -lfs
+LDFLAGS := -L$(FSPATH) -lfs -lm
 
 # Application objects to compile
 objs := $(patsubst %.x,%.o,$(programs))
