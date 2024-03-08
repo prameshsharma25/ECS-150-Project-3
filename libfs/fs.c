@@ -656,44 +656,40 @@ int fs_write(int fd, void *buf, size_t count)
 			return -1;
 		}
 
-		// total bytes written so far
-		bytes_written += bytes_to_write;
-		buffer_ptr += bytes_to_write;
+		int next_block_index = fatBlocks[block_index];
+        if (next_block_index == FAT_EOC)
+        {
+            int new_block_index = fs_allocate_block(fatBlocks, superblock.data_block_count);
+            if (new_block_index == -1)
+            {
+                free(fatBlocks);
+                return -1;
+            }
 
-		// if more bytes need to be written
-		if (bytes_written < count)
-		{
-			int next_block_index = fatBlocks[block_index];
+            fatBlocks[block_index] = new_block_index;
+            fatBlocks[new_block_index] = FAT_EOC;
 
-			// if end of current fat block
-			if (next_block_index == FAT_EOC)
-			{
-				int new_block_index = fs_allocate_block(fatBlocks, superblock.data_block_count);
-				if (new_block_index == -1)
-				{
-					free(fatBlocks);
-					return -1;
-				}
+            if (bytes_written == 0)
+            {
+                rdir[rdir_idx].first_data_block_index = new_block_index;
+                if (block_write(superblock.root_directory_index, &rdir) == -1)
+                {
+                    free(fatBlocks);
+                    return -1;
+                }
+            }
 
-				fatBlocks[block_index] = new_block_index;
-				fatBlocks[new_block_index] = FAT_EOC;
-				if (bytes_written == 0)
-				{
-					rdir[rdir_idx].first_data_block_index = block_index;
-					if (block_write(superblock.root_directory_index, &rdir) == -1)
-					{
-						free(fatBlocks);
-						return -1;
-					}
-				}
-				block_index = new_block_index;
-			}
-			else
-			{
-				block_index = next_block_index;
-			}
-		}
-	}
+            block_index = new_block_index;
+        }
+        else
+        {
+            block_index = next_block_index;
+        }
+
+        // Update pointers and counters
+        bytes_written += bytes_to_write;
+        buffer_ptr += bytes_to_write;
+    }
 
 	free(fatBlocks);
 	return bytes_written;
