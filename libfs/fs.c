@@ -261,7 +261,7 @@ int fs_info(void)
 
 	printf("FS Info:\ntotal_blk_count=%i\nfat_blk_count=%i\nrdir_blk=%i\ndata_blk=%i\ndata_blk_count=%i\nfat_free_ratio=%i/%i\nrdir_free_ratio=%i/%i\n",
 		   superblock.total_blocks, superblock.fat_block_count, superblock.root_directory_index, superblock.data_block_start_index,
-		   superblock.data_block_count, BLOCK_SIZE - fatBlocksWritten, BLOCK_SIZE, FS_FILE_MAX_COUNT - filesWritten, FS_FILE_MAX_COUNT);
+		   superblock.data_block_count, superblock.data_block_count - fatBlocksWritten, superblock.data_block_count, FS_FILE_MAX_COUNT - filesWritten, FS_FILE_MAX_COUNT);
 
 	return 0;
 }
