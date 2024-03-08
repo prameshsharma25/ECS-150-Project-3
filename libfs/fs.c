@@ -107,7 +107,6 @@ static int files_written()
 	Root_Directory rdir[128];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 	int filesWritten = 0;
@@ -136,7 +135,6 @@ int fat_blocks_written()
 	Root_Directory rdir[128];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
@@ -299,7 +297,6 @@ int fs_create(const char *filename)
 	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
@@ -367,7 +364,6 @@ int fs_delete(const char *filename)
 	int rdir_index;
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
@@ -406,7 +402,6 @@ int fs_delete(const char *filename)
 	{
 		if (block_read(i, &tempFatBlock) == -1)
 		{
-			perror("Error when reading fat block from disk\n");
 			return -1;
 		}
 
@@ -420,7 +415,6 @@ int fs_delete(const char *filename)
 	{
 		if (block_write(fat_index + superblock.data_block_start_index, &dataBlock) == -1)
 		{ // override data block
-			perror("Error when writing data block back into disk\n");
 			return -1;
 		}
 		temp_index = fatBlocks[fat_index]; // perform swap
@@ -448,7 +442,6 @@ int fs_ls(void)
 	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
@@ -507,7 +500,6 @@ int fs_open(const char *filename)
 	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
@@ -572,7 +564,6 @@ int fs_stat(int fd)
 	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
@@ -623,7 +614,6 @@ int fs_write(int fd, void *buf, size_t count)
 	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
@@ -638,7 +628,6 @@ int fs_write(int fd, void *buf, size_t count)
 	{
 		if (block_read(i, &tempFatBlock) == -1)
 		{
-			perror("Error when reading fat block from disk\n");
 			free(fatBlocks);
 			return -1;
 		}
@@ -732,7 +721,6 @@ int fs_read(int fd, void *buf, size_t count)
 	Root_Directory rdir[FS_FILE_MAX_COUNT];
 	if (block_read(superblock.root_directory_index, &rdir) == -1)
 	{
-		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
