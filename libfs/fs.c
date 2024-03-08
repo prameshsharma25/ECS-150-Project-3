@@ -251,6 +251,7 @@ int fs_info(void)
 	Superblock superblock;
 	if (block_read(0, &superblock) == -1)
 	{
+		perror("Error when reading root directory from disk\n");
 		return -1;
 	}
 
