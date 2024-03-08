@@ -30,10 +30,10 @@ int main(int argc, char *argv[])
 	ASSERT(!ret, "fs_mount");
 
 	/* Create file and open */
-	ret = fs_create("myfile");
+	ret = fs_create("myfile2");
 	ASSERT(!ret, "fs_create");
 
-	fd = fs_open("myfile");
+	fd = fs_open("myfile2");
 	ASSERT(fd >= 0, "fs_open");
 
 	/* Write some data */

@@ -307,7 +307,6 @@ int fs_create(const char *filename)
 	{
 		if (strcmp(rdir[i].filename, fileStore) == 0)
 		{
-			printf("filename already exists! at %i", rdir[i].first_data_block_index);
 			return -1;
 		}
 	}
@@ -325,6 +324,7 @@ int fs_create(const char *filename)
 		if (rdir[i].filename[0] == 0)
 		{							 // first letter is null terminated
 			rdir[i] = new_dir_entry; // add new directory entry if empty
+			break;
 		}
 	}
 
@@ -626,26 +626,79 @@ int fs_write(int fd, void *buf, size_t count)
 	uint16_t tempFatBlock[BLOCK_SIZE];
 	for (int i = 1; i < superblock.root_directory_index; ++i)
 	{
-		if (block_read(i, &tempFatBlock) == -1)
-		{
-			free(fatBlocks);
-			return -1;
-		}
+		block_read(i, &tempFatBlock);
 		memcpy(fatBlocks + (i - 1) * BLOCK_SIZE, tempFatBlock, BLOCK_SIZE);
+	}
+
+	/*
+	* Need to determine where exactly to begin writing.. do so by checking whether or not 
+	* current index is FAT_EOC => we need a new spot. We can do some basic arithmetic with the
+	* size of the file to determine whether or not we need a new fat cell.
+ 	*/
+	//int size = rdir[rdir_idx].size;
+	int amtLeft = (int)count;
+	int prev_idx;
+	int block_index;
+ 	if (rdir[rdir_idx].first_data_block_index == FAT_EOC){
+		int set_rdir_idx = 1;
+		for(int i = 0; i < BLOCK_SIZE * superblock.fat_block_count; ++i){ // find free spot!
+			if(fatBlocks[i] == 0){
+				if(set_rdir_idx){
+					rdir[rdir_idx].first_data_block_index = i;
+					fatBlocks[i] = FAT_EOC;
+					prev_idx = i;
+					set_rdir_idx = 0;
+				} else {
+					fatBlocks[prev_idx] = i;
+					fatBlocks[i] = FAT_EOC;
+					prev_idx = i;
+				}
+				amtLeft-=BLOCK_SIZE;
+				if(amtLeft > 0){
+					continue;
+				} else {
+					break;
+				}
+			}
+		}
+		if(set_rdir_idx == 1){ // theres no space for anything
+			return 0;
+		}
+	} else {
+		size_t num_fat_blocks = 0;
+		block_index = rdir[rdir_idx].first_data_block_index;
+		while(block_index != FAT_EOC){ // find last index
+			num_fat_blocks++;
+			prev_idx = block_index;
+			block_index = fatBlocks[block_index];
+		}
+		amtLeft = num_fat_blocks*BLOCK_SIZE - count;
+		if(count > num_fat_blocks*BLOCK_SIZE){
+			for(int i = 0; i < BLOCK_SIZE * superblock.fat_block_count; ++i){ // find free spot!
+				if(fatBlocks[i] == 0){
+					fatBlocks[prev_idx] = i;
+					fatBlocks[i] = FAT_EOC;
+					prev_idx = i;
+
+					amtLeft-=BLOCK_SIZE;
+					if(amtLeft > 0){
+						continue;
+					} else {
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	/*
 	 * Given the first index in rdir, go to data block of file
 	 */
-	int block_index = rdir[rdir_idx].first_data_block_index; // first index of block array, as provided in FAT
-	printf("%p %ld %i", buf, count, block_index);
-
-	size_t bytes_written = 0;
-	char *buffer_ptr = (char *)buf;
-
-	/*
-	 * Write data from data block
-	 */
+	block_index = rdir[rdir_idx].first_data_block_index; // first index of block array, as provided in FAT
+	//printf("%p %ld %i", buf, count, block_index);
+	int next_index;
+	size_t offset = offsetArray[fd];
+	/* char *buffer_ptr = (char *)buf;
 	while (block_index != FAT_EOC && bytes_written < count)
 	{
 		size_t remaining_space = count - bytes_written;
@@ -690,7 +743,61 @@ int fs_write(int fd, void *buf, size_t count)
         // Update pointers and counters
         bytes_written += bytes_to_write;
         buffer_ptr += bytes_to_write;
-    }
+    } */
+	/*
+	* Go to position in FAT array - seek to the offset -
+	  break with desired index.
+	*/
+	while (1)
+	{
+		if (offset >= BLOCK_SIZE)
+		{
+			// if offset >= block size --> go to the next index
+			next_index = fatBlocks[block_index];
+			if (next_index == FAT_EOC)
+			{			  // offset exceeds space for file
+				return 0; // 0 bytes read
+			}
+			block_index = next_index;
+			offset -= BLOCK_SIZE;
+		}
+		else
+		{
+			// if offset < block size --> we are ready to read
+			break; // block_index is where we want to start
+		}
+	}
+
+	/*
+	 * Begin piping in data through temp data blocks, memcpy buffer to data block, write block back into disk
+	 */
+
+	char data_block[BLOCK_SIZE];
+	int bytes_written= 0;
+	while (1)
+	{
+		block_read(block_index + superblock.data_block_start_index, &data_block); // read block from disk
+		if (count > BLOCK_SIZE - offset) // if the count is bigger than the number of remaining blocks
+		{
+			memcpy(data_block + offset, buf + bytes_written, BLOCK_SIZE - offset);
+			block_write(block_index + superblock.data_block_start_index, &data_block);
+			bytes_written += (int)(BLOCK_SIZE - offset);
+			count -= BLOCK_SIZE - offset;
+			offset = 0;
+			block_index = fatBlocks[block_index];
+			if (block_index == FAT_EOC)
+			{
+				break;
+			}
+		}
+		else
+		{
+			memcpy(data_block + offset, buf + bytes_written, count);
+			block_write(block_index + superblock.data_block_start_index, &data_block);
+			bytes_written += (int)count;
+			break;
+		}
+	}
 
 	free(fatBlocks);
 	return bytes_written;
@@ -794,5 +901,6 @@ int fs_read(int fd, void *buf, size_t count)
 		}
 	}
 
+	offsetArray[fd] += bytes_read;
 	return bytes_read;
 }

@@ -1,5 +1,5 @@
 # Target programs
-programs := test_unit.x
+programs := simple_writer.x
 
 # File-system library
 FSLIB := libfs
