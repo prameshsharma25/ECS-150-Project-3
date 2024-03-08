@@ -650,6 +650,7 @@ int fs_write(int fd, void *buf, size_t count)
 	{
 		size_t remaining_space = count - bytes_written;
 		size_t bytes_to_write = remaining_space < BLOCK_SIZE ? remaining_space : BLOCK_SIZE;
+		
 		if (block_write(block_index + superblock.data_block_start_index, buffer_ptr) == -1)
 		{
 			free(fatBlocks);
