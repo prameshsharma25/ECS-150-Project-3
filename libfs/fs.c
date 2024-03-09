@@ -384,13 +384,12 @@ int fs_delete(const char *filename)
 	}
 
 	int blockSpan = ceil(dirRemoval.size / BLOCK_SIZE); // number of blocks the data will be written to
-	if (blockSpan == 0)
-	{
-		Root_Directory empty_directory;
-		strcpy(empty_directory.filename, "\0");
-		rdir[rdir_index] = empty_directory; // effectively removes size zero file
-		return 0;
-	}
+	Root_Directory empty_directory;
+	strcpy(empty_directory.filename, "\0");
+	rdir[rdir_index] = empty_directory; // effectively removes size zero file
+	
+	// write block back into disk
+	block_write(superblock.root_directory_index, &rdir); 
 
 	/*
 	 * Fetch fat blocks from disk
