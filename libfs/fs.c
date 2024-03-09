@@ -595,7 +595,7 @@ int fs_write(int fd, void *buf, size_t count)
 		return -1;
 	}
 
-	if ((fdArray[fd] == -1) || (fd > 31) || (fd < 0))
+	if ((fdArray[fd] == -1) || (fd > 31) || (fd < 0) || buf == NULL)
 	{
 		return -1; // its closed or invalid
 	}
@@ -700,6 +700,9 @@ int fs_write(int fd, void *buf, size_t count)
 				}
 			}
 		}
+	}
+	for(int i = 1; i < superblock.fat_block_count; ++i){
+		block_write(i, fatBlocks + (i-1)*BLOCK_SIZE);
 	}
 
 	/*
