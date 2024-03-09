@@ -4,15 +4,18 @@
 
 #include "fs.h" // Assuming fs.h contains declarations for file system functions
 
-#define ASSERT(cond) \
-    do { \
-        if (!(cond)) { \
+#define ASSERT(cond)                                          \
+    do                                                        \
+    {                                                         \
+        if (!(cond))                                          \
+        {                                                     \
             fprintf(stderr, "Assertion failed: %s\n", #cond); \
-            exit(1); \
-        } \
+            exit(1);                                          \
+        }                                                     \
     } while (0)
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     int ret;
     char *diskname;
 
@@ -42,7 +45,6 @@ int main(int argc, char *argv[]) {
     int fd_exists = fs_open("file_exists");
     ret = fs_write(fd_exists, existing_data, strlen(existing_data));
     ASSERT(ret == strlen(existing_data));
-    fs_ls();
 
     char additional_data[] = "additional data";
     ret = fs_write(fd_exists, additional_data, strlen(additional_data));
@@ -54,18 +56,17 @@ int main(int argc, char *argv[]) {
 
     ret = fs_delete("file_delete");
     ASSERT(ret == 0);
-    fs_ls();
 
     // Test Bounds Testing
-  //  ret = fs_create("file_bounds");
-  //  ASSERT(ret == 0);
+    ret = fs_create("file_bounds");
+    ASSERT(ret == 0);
 
-  /*   char large_data[100 * 1024 * 1024];
+    char large_data[1048577];
     memset(large_data, 'A', sizeof(large_data));
 
     // Attempt to write data exceeding file size limit
     int fd_bounds = fs_open("file_bounds");
-    ret = fs_write(fd_bounds, large_data, sizeof(large_data)); */
+    ret = fs_write(fd_bounds, large_data, sizeof(large_data));
 
     /* Close file and unmount */
     ret = fs_umount();
