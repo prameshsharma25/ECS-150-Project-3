@@ -19,4 +19,4 @@ fs.o: fs.c fs.h
 
 clean:
 	rm -rf *.o *.a
-	cd ../apps; rm -rf *.o *.d
+	cd ../apps; rm -rf *.o *.d *.x

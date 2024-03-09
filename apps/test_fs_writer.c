@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     ASSERT(ret == 0);
     fs_ls();
 
-    ret = fs_delete("file_delete");
+    ret = fs_delete("file_offset");
     ASSERT(ret == 0);
     fs_ls();
 
