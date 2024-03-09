@@ -538,16 +538,6 @@ int fs_close(int fd)
 
 int fs_stat(int fd)
 {
-	if (is_mounted() < 0)
-	{
-		return -1; // disk hasnt been mounted yet
-	}
-
-	if ((fdArray[fd] == -1) || (fd > 31) || (fd < 0))
-	{
-		return -1; // its closed or invalid
-	}
-
 	/*
 	 * Open superblock
 	 */
@@ -555,6 +545,11 @@ int fs_stat(int fd)
 	if (block_read(0, &superblock) == -1)
 	{
 		return -1;
+	}
+
+	if ((fdArray[fd] == -1) || (fd > 31) || (fd < 0))
+	{
+		return -1; // its closed or invalid
 	}
 
 	/*
@@ -566,10 +561,8 @@ int fs_stat(int fd)
 		return -1;
 	}
 
-	int rdir_idx = fdArray[fd];
-	printf("%i\n", rdir[rdir_idx].size);
 
-	return 0;
+	return rdir[fdArray[fd]].size;
 }
 
 int fs_lseek(int fd, size_t offset)
@@ -772,6 +765,8 @@ int fs_write(int fd, void *buf, size_t count)
 		}
 	}
 
+	rdir[rdir_idx].size = fs_stat(fd) + bytes_written;
+	block_write(superblock.root_directory_index, &rdir);
 	free(fatBlocks);
 	return bytes_written;
 }

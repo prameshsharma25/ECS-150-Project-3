@@ -36,6 +36,7 @@ int main(int argc, char *argv[])
     char new_data[] = "new data";
     ret = fs_write(fd_offset, new_data, strlen(new_data));
     ASSERT(ret == strlen(new_data));
+    fs_ls();
 
     // Test Write on File That Already Exists
     ret = fs_create("file_exists");
@@ -53,9 +54,11 @@ int main(int argc, char *argv[])
     // Test File Delete
     ret = fs_create("file_delete");
     ASSERT(ret == 0);
+    fs_ls();
 
     ret = fs_delete("file_delete");
     ASSERT(ret == 0);
+    fs_ls();
 
     // Test Bounds Testing
     ret = fs_create("file_bounds");
@@ -67,6 +70,11 @@ int main(int argc, char *argv[])
     // Attempt to write data exceeding file size limit
     int fd_bounds = fs_open("file_bounds");
     ret = fs_write(fd_bounds, large_data, sizeof(large_data));
+
+    ret = fs_delete("file_bounds");
+    ASSERT(ret == 0);
+    fs_ls();
+
 
     /* Close file and unmount */
     ret = fs_umount();
