@@ -21,13 +21,15 @@ int main(int argc, char *argv[])
 
 	/* Mount disk */
 	diskname = argv[1];
+	char buf[1] = "";
 	ret = fs_mount(diskname);
+	printf("%i\n",ret);
 	fs_create("filename");
-	printf("%i\n",ret);
+	int fd = fs_open("filename");
+	fs_write(fd,buf,0);
+	fs_ls();
 	ret = fs_info();
-	printf("%i\n",ret);
 	/* Close file and unmount */
 	ret = fs_umount();
-	printf("%i\n",ret);
 	return 0;
 }

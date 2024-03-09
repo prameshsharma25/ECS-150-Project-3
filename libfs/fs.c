@@ -611,6 +611,10 @@ int fs_write(int fd, void *buf, size_t count)
 
 	int rdir_idx = fdArray[fd];
 
+	if( fs_stat(fd) == 0 ){
+		return 0;
+	}
+
 	/*
 	 * Open fat blocks
 	 */
